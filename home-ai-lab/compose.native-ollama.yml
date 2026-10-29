@@ -1,0 +1,14 @@
+# Mac mode: Ollama runs as the native Mac app (fast, uses the Apple GPU) instead of
+# in Docker (CPU only on a Mac). This points the hostname "ollama" at your Mac, so
+# every container keeps using http://ollama:11434 and nothing else has to change.
+#
+# Turned on by ./lab.sh setup when you pick the Mac app. Don't combine with the
+# "ollama" profile.
+
+services:
+  open-webui:
+    extra_hosts:
+      - ollama:host-gateway
+  n8n:
+    extra_hosts:
+      - ollama:host-gateway

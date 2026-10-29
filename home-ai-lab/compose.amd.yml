@@ -1,0 +1,9 @@
+# AMD GPU for Ollama (Linux only, ROCm).
+# Turned on by ./lab.sh setup when it finds /dev/kfd.
+
+services:
+  ollama:
+    image: ollama/ollama:${OLLAMA_VERSION:-0.40.13}-rocm
+    devices:
+      - /dev/kfd
+      - /dev/dri

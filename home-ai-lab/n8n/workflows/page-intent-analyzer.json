@@ -1,0 +1,296 @@
+{
+  "name": "Page intent analyzer",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Page intent analyzer\nSend a URL, get back what the page is about, who it targets, its search intent and funnel stage, the keywords it goes after, and the questions it leaves open. Everything runs on your own computer through Ollama.\n\n**Try it** (after you Publish):\n```\ncurl -X POST http://localhost:5678/webhook/page-intent \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"url\": \"https://www.enzuzo.com/pricing\"}'\n```\nAdd `\"model\": \"qwen3.5:9b\"` to pick a model. Otherwise it uses the first chat model you've pulled.\n\nEdit the prompt and the fields you get back in **Build prompt**.",
+        "height": 380,
+        "width": 520
+      },
+      "id": "0b7a3c1e-3f2d-4d8e-9a51-6c1b2f9e0a01",
+      "name": "About this workflow",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -280,
+        -460
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "page-intent",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "5c2e8f41-7a0b-4c3d-8e6f-1a2b3c4d5e01",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -280,
+        0
+      ],
+      "webhookId": "7f3e2d1c-9b8a-4c6d-a5e4-f3b2c1d0e9a8"
+    },
+    {
+      "parameters": {
+        "url": "http://ollama:11434/api/tags",
+        "options": {}
+      },
+      "id": "5c2e8f41-7a0b-4c3d-8e6f-1a2b3c4d5e02",
+      "name": "List models",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -60,
+        0
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Webhook').first().json.body.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (compatible; HomeAILab/1.0)"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "html"
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "id": "5c2e8f41-7a0b-4c3d-8e6f-1a2b3c4d5e03",
+      "name": "Fetch page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        160,
+        0
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turns raw HTML into what the model needs: title, description, headings and readable text.\nconst html = String($input.first().json.html ?? '');\n\nconst entities = {\n  nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '\"', apos: \"'\", ndash: '-', mdash: '-',\n  lsquo: \"'\", rsquo: \"'\", ldquo: '\"', rdquo: '\"', hellip: '...', copy: '(c)', reg: '(R)', trade: '(TM)',\n};\nconst char = (code, fallback) => {\n  try { return String.fromCodePoint(code); } catch { return fallback; }\n};\nconst decode = (s) => s\n  .replace(/&#x([0-9a-f]+);/gi, (m, hex) => char(parseInt(hex, 16), m))\n  .replace(/&#(\\d+);/g, (m, dec) => char(Number(dec), m))\n  .replace(/&([a-z]+);/gi, (m, name) => entities[name.toLowerCase()] ?? m);\nconst clean = (s) => decode(s.replace(/<[^>]+>/g, ' ')).replace(/\\s+/g, ' ').trim();\nconst first = (re) => {\n  const m = html.match(re);\n  return m ? clean(m[1]) : '';\n};\n\nconst title = first(/<title[^>]*>([\\s\\S]*?)<\\/title>/i);\nconst description =\n  first(/<meta[^>]+name=[\"']description[\"'][^>]+content=[\"']([^\"']*)[\"']/i) ||\n  first(/<meta[^>]+content=[\"']([^\"']*)[\"'][^>]+name=[\"']description[\"']/i);\nconst headings = [...html.matchAll(/<h([1-3])[^>]*>([\\s\\S]*?)<\\/h\\1>/gi)]\n  .map((m) => `H${m[1]}: ${clean(m[2])}`)\n  .filter((h) => h.length > 4)\n  .slice(0, 40);\nconst text = clean(\n  html\n    .replace(/<!--[\\s\\S]*?-->/g, ' ')\n    .replace(/<(script|style|noscript|svg|nav|footer|form)[^>]*>[\\s\\S]*?<\\/\\1>/gi, ' ')\n).slice(0, 8000);\n\nif (!text) {\n  throw new Error('That page has no readable text. It may need JavaScript to render, or it blocked the request.');\n}\n\nreturn [{ json: { url: $('Webhook').first().json.body.url, title, description, headings, text } }];"
+      },
+      "id": "5c2e8f41-7a0b-4c3d-8e6f-1a2b3c4d5e04",
+      "name": "Extract page text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        380,
+        -20
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Picks the model and writes the request for Ollama. Edit the prompt and fields here.\nconst page = $input.first().json;\nconst requested = $('Webhook').first().json.body.model;\nconst installed = ($('List models').first().json.models ?? []).map((m) => m.name);\nconst model = requested || installed.find((name) => !/embed/i.test(name));\n\nif (!model) {\n  throw new Error('No chat model found. Pull one first, for example: ./lab.sh pull qwen3.5:4b');\n}\n\nconst list = (description) => ({ type: 'array', items: { type: 'string' }, description });\nconst schema = {\n  type: 'object',\n  properties: {\n    summary: { type: 'string', description: 'Two sentences on what the page offers and to whom' },\n    page_type: {\n      type: 'string',\n      enum: ['homepage', 'product page', 'pricing page', 'comparison page', 'landing page', 'blog post', 'guide', 'documentation', 'other'],\n    },\n    search_intent: { type: 'string', enum: ['informational', 'commercial', 'transactional', 'navigational'] },\n    funnel_stage: { type: 'string', enum: ['awareness', 'consideration', 'decision'] },\n    target_audience: { type: 'string' },\n    primary_topic: { type: 'string' },\n    keywords: list('5 to 10 search phrases this page is trying to rank for'),\n    buying_signals: list('What on the page suggests the reader is evaluating a purchase (pricing, comparisons, demos, trials)'),\n    content_gaps: list('Questions a reader would still have after this page'),\n  },\n  required: ['summary', 'page_type', 'search_intent', 'funnel_stage', 'target_audience', 'primary_topic', 'keywords', 'buying_signals', 'content_gaps'],\n};\n\nconst pageText = [\n  `URL: ${page.url}`,\n  `Title: ${page.title}`,\n  `Meta description: ${page.description}`,\n  `Headings:\\n${page.headings.join('\\n')}`,\n  `Page text:\\n${page.text}`,\n].join('\\n\\n');\n\nreturn [{\n  json: {\n    request: {\n      model,\n      stream: false,\n      think: false,\n      format: schema,\n      options: { temperature: 0.2, num_ctx: 8192 },\n      messages: [\n        {\n          role: 'system',\n          content: 'You are an SEO and content strategist. Analyze the web page you are given and describe its search intent, audience and keywords. Base every answer on the page itself. Reply with JSON only.',\n        },\n        { role: 'user', content: pageText },\n      ],\n    },\n  },\n}];"
+      },
+      "id": "5c2e8f41-7a0b-4c3d-8e6f-1a2b3c4d5e05",
+      "name": "Build prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        -40
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://ollama:11434/api/chat",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.request) }}",
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "id": "5c2e8f41-7a0b-4c3d-8e6f-1a2b3c4d5e06",
+      "name": "Ask local model",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        820,
+        -60
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turns the model's reply into the webhook's answer.\nconst page = $('Extract page text').first().json;\nconst reply = $input.first().json;\nconst content = reply.message?.content ?? '';\n\nlet analysis;\ntry {\n  analysis = JSON.parse(content);\n} catch {\n  analysis = {\n    error: \"The model's answer wasn't valid JSON. Run it again, or try a larger model.\",\n    raw_answer: content,\n  };\n}\n\nreturn [{\n  json: {\n    url: page.url,\n    title: page.title,\n    model: reply.model,\n    seconds: Math.round((reply.total_duration ?? 0) / 1e9),\n    ...analysis,\n  },\n}];"
+      },
+      "id": "5c2e8f41-7a0b-4c3d-8e6f-1a2b3c4d5e07",
+      "name": "Parse answer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "5c2e8f41-7a0b-4c3d-8e6f-1a2b3c4d5e08",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1260,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: $json.error?.message ?? $json.error ?? 'Something went wrong', failed_step: $prevNode.name }) }}",
+        "options": {
+          "responseCode": 502
+        }
+      },
+      "id": "5c2e8f41-7a0b-4c3d-8e6f-1a2b3c4d5e09",
+      "name": "Respond with error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        820,
+        220
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "List models",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List models": {
+      "main": [
+        [
+          {
+            "node": "Fetch page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond with error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch page": {
+      "main": [
+        [
+          {
+            "node": "Extract page text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond with error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract page text": {
+      "main": [
+        [
+          {
+            "node": "Build prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond with error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build prompt": {
+      "main": [
+        [
+          {
+            "node": "Ask local model",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond with error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask local model": {
+      "main": [
+        [
+          {
+            "node": "Parse answer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond with error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse answer": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "active": false,
+  "tags": []
+}

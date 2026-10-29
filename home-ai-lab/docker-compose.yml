@@ -1,0 +1,137 @@
+# Home AI lab: five containers, each with one job.
+#
+#   ollama      serve     runs the local models               (profile: ollama)
+#   open-webui  talk      ChatGPT-style chat in your browser  (always on)
+#   qdrant      remember  vector search over your documents   (profile: qdrant)
+#   n8n         automate  scheduled jobs, webhooks, glue      (profile: n8n)
+#   portainer   manage    restarts, logs, volumes, cleanup    (profile: portainer)
+#
+# Don't edit this file to turn parts on or off. Use ./lab.sh (setup, add, remove),
+# which writes your choices to .env.
+#
+# Every container talks to the model at http://ollama:11434, whether Ollama runs
+# here in Docker or as the native Mac app (see compose.native-ollama.yml).
+#
+# Versions are pinned so nothing changes under you. To upgrade, bump the number
+# after ":-" below (or set e.g. OLLAMA_VERSION in .env), then run ./lab.sh update.
+
+name: home-ai-lab
+
+services:
+  ollama:
+    image: ollama/ollama:${OLLAMA_VERSION:-0.40.13}
+    profiles: [ollama]
+    restart: unless-stopped
+    ports:
+      - "${LAB_BIND_ADDRESS:-127.0.0.1}:11434:11434"
+    volumes:
+      # Models live in a named volume so they survive container recreates and updates.
+      - ollama:/root/.ollama
+    environment:
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 10s
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:${OPEN_WEBUI_VERSION:-v0.12.5}
+    restart: unless-stopped
+    ports:
+      - "${LAB_BIND_ADDRESS:-127.0.0.1}:3000:8080"
+    volumes:
+      # Users, chats, knowledge bases and uploaded files.
+      - open-webui:/app/backend/data
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      # Signs login sessions. Generated once by ./lab.sh setup; changing it logs everyone out.
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:?WEBUI_SECRET_KEY is missing. Run ./lab.sh setup first.}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    healthcheck:
+      # Same check as the image's own, plus a grace period: the first boot can take
+      # a couple of minutes on a laptop and shouldn't be reported as a failure.
+      test: ["CMD-SHELL", "curl --silent --fail http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5m
+      start_interval: 5s
+    depends_on:
+      ollama:
+        condition: service_healthy
+        required: false
+
+  qdrant:
+    image: qdrant/qdrant:${QDRANT_VERSION:-v1.20.0}
+    profiles: [qdrant]
+    restart: unless-stopped
+    ports:
+      - "${LAB_BIND_ADDRESS:-127.0.0.1}:6333:6333" # REST API and dashboard (/dashboard)
+      - "${LAB_BIND_ADDRESS:-127.0.0.1}:6334:6334" # gRPC
+    volumes:
+      - qdrant:/qdrant/storage
+    environment:
+      QDRANT__TELEMETRY_DISABLED: "true"
+    healthcheck:
+      test: ["CMD", "bash", "-c", ":> /dev/tcp/127.0.0.1/6333"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:${N8N_VERSION:-2.45.6}
+    profiles: [n8n]
+    restart: unless-stopped
+    ports:
+      - "${LAB_BIND_ADDRESS:-127.0.0.1}:5678:5678"
+    volumes:
+      # Workflows, executions and saved credentials (encrypted with N8N_ENCRYPTION_KEY).
+      - n8n:/home/node/.n8n
+      # The ./files folder next to this file. The "Read/Write Files from Disk" node
+      # can only touch this folder, so drop documents here for workflows to pick up.
+      - ./files:/home/node/.n8n-files
+    environment:
+      # Generated once by ./lab.sh setup. Lose it and saved n8n credentials can't be decrypted.
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?N8N_ENCRYPTION_KEY is missing. Run ./lab.sh setup first.}
+      GENERIC_TIMEZONE: ${TIMEZONE:-America/Toronto}
+      TZ: ${TIMEZONE:-America/Toronto}
+      WEBHOOK_URL: http://localhost:5678/
+      # n8n listens on IPv6 by default, which some Docker setups don't have.
+      N8N_LISTEN_ADDRESS: 0.0.0.0
+      # Set N8N_SECURE_COOKIE=false in .env only if you open n8n from another device
+      # over plain http (needs LAB_BIND_ADDRESS=0.0.0.0).
+      N8N_SECURE_COOKIE: ${N8N_SECURE_COOKIE:-true}
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:5678/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 1m
+      start_interval: 3s
+
+  portainer:
+    image: portainer/portainer-ce:${PORTAINER_VERSION:-2.45.3}
+    profiles: [portainer]
+    restart: unless-stopped
+    ports:
+      - "${LAB_BIND_ADDRESS:-127.0.0.1}:9443:9443"
+    volumes:
+      # The Docker socket gives Portainer full control of every container on this
+      # machine. That's the point of it, and also why it must never face the internet.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer:/data
+
+volumes:
+  ollama:
+  open-webui:
+  qdrant:
+  n8n:
+  portainer:

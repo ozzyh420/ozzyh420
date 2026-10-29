@@ -1,0 +1,10 @@
+# Secrets and machine-specific settings
+.env
+.env.bak*
+
+# Backups contain chats, credentials and a copy of .env
+backups/
+
+# Your documents for n8n workflows
+files/*
+!files/.gitkeep

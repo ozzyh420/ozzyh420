@@ -105,14 +105,15 @@ ram_gb() {
   echo $(( kb / 1024 / 1024 ))
 }
 
-# A good first model for this machine's memory. See the README for alternatives.
+# A good first model for this machine's memory, from US and European makers only
+# (Google, IBM). See the README for alternatives.
 recommend_model() {
   local gb
   gb=$(ram_gb)
   if [ "$gb" -ge 36 ]; then echo gemma4:26b
-  elif [ "$gb" -ge 24 ]; then echo qwen3.5:9b
-  elif [ "$gb" -ge 12 ]; then echo qwen3.5:4b
-  else echo qwen3.5:2b
+  elif [ "$gb" -ge 24 ]; then echo gemma4:12b
+  elif [ "$gb" -ge 12 ]; then echo granite4.2:8b
+  else echo granite4.2:3b
   fi
 }
 
@@ -387,7 +388,7 @@ Home AI lab
   ./lab.sh restart [part]     Restart everything, or one part
   ./lab.sh status             What's running, where to open it, which models you have
 
-  ./lab.sh pull <model>       Download a model, e.g. ./lab.sh pull qwen3.5:4b
+  ./lab.sh pull <model>       Download a model, e.g. ./lab.sh pull granite4.2:8b
   ./lab.sh models             List downloaded models
 
   ./lab.sh add <part>         Turn on qdrant or portainer

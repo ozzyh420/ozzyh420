@@ -8,7 +8,7 @@ It follows [5 Docker Containers You Need for a Home AI Lab](https://www.kdnugget
 
 | Part | Job | In plain terms | Open it at |
 | --- | --- | --- | --- |
-| **Ollama** | Serve | The engine. Downloads open models (Qwen, Gemma, Llama and more) and runs them on your computer. | No page of its own |
+| **Ollama** | Serve | The engine. Downloads open models (Gemma, Granite, Mistral and more) and runs them on your computer. | No page of its own |
 | **Open WebUI** | Talk | ChatGPT-style chat in your browser. Upload files, build knowledge bases, save prompts. | http://localhost:3000 |
 | **Qdrant** | Remember | A search index for your documents (a "vector database") that your own tools and scripts can look things up in. | http://localhost:6333/dashboard |
 | **Portainer** | Manage | A control panel to see, restart and clean up the containers without the terminal. | https://localhost:9443 |
@@ -56,7 +56,7 @@ flowchart LR
    ```
 6. **Download a model.** Setup suggests one for your computer's memory; see the [model guide](#which-model-to-pull) for others:
    ```sh
-   ./lab.sh pull qwen3.5:4b
+   ./lab.sh pull granite4.2:8b
    ```
 7. **Open http://localhost:3000** and create your account. The first account becomes the admin, and it only exists on your computer. Pick the model at the top left and start chatting.
 
@@ -73,10 +73,14 @@ That's a working lab. Close the terminal whenever you like: the lab keeps runnin
 
 | Your computer's memory | Start with | Download | Notes |
 | --- | --- | --- | --- |
-| Under 12 GB | `qwen3.5:2b` | about 3 GB | Quick summaries, tagging, simple drafts |
-| 12 to 23 GB | `qwen3.5:4b` | about 4 GB | Good everyday model. Try `qwen3.5:9b` if answers feel thin |
-| 24 to 35 GB | `qwen3.5:9b` | 7 to 9 GB | Noticeably better writing and reasoning |
-| 36 GB or more | `gemma4:26b` | 16 to 19 GB | Closest to the cloud models, and quick because it only uses part of itself per word |
+| Under 12 GB | `granite4.2:3b` (IBM) | 2.2 GB | Quick summaries, tagging, simple drafts |
+| 12 to 23 GB | `granite4.2:8b` (IBM) | 5.3 GB | Light, fast everyday model. Try `gemma4:12b` when you want better writing |
+| 24 to 35 GB | `gemma4:12b` (Google) | about 8 GB | Noticeably better writing and reasoning. Reads images too |
+| 36 GB or more | `gemma4:26b` (Google) | 16 to 19 GB | Closest to the cloud models, and quick because it only uses part of itself per word |
+
+Another good option at most sizes is Mistral's `ministral-3` (France): `3b` is 3 GB, `8b` is 6 GB and `14b` is 9 GB.
+
+All of these come from US and European companies. Ollama's library also carries Chinese models (Qwen, DeepSeek, GLM, Kimi, MiniMax) and some models built on top of them, so check a model's page for who made it before pulling anything not listed here.
 
 Sizes are from [ollama.com](https://ollama.com/library) in October 2026. The rule of thumb is a download no bigger than about half your memory. You can have several models and switch between them in the chat. Run `./lab.sh models` to see what you have; models are also manageable from Open WebUI's admin settings.
 
@@ -137,7 +141,7 @@ To update, change the number after `:-` on that part's `image:` line in `docker-
 | --- | --- |
 | `permission denied: ./lab.sh` | Run `chmod +x lab.sh` once (common after downloading a ZIP) |
 | "Docker isn't running" | Open Docker Desktop and wait for it to finish starting |
-| No models in the chat's model picker | Run `./lab.sh pull qwen3.5:4b`. On a Mac, check the Ollama app is running (llama icon in the menu bar) |
+| No models in the chat's model picker | Run `./lab.sh pull granite4.2:8b`. On a Mac, check the Ollama app is running (llama icon in the menu bar) |
 | Replies are very slow | Use a smaller model. On a Mac, make sure you chose the Ollama app during setup (run `./lab.sh setup` to switch), and close heavy apps |
 | "port is already allocated" | Another app uses that port. Quit it, or change the first number in that part's `ports:` line in `docker-compose.yml` |
 | Portainer says it timed out | `./lab.sh restart portainer`, then create the admin within 5 minutes using the new token it prints |

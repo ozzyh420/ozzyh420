@@ -6,9 +6,9 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 PROJECT=home-ai-lab
-OPTIONAL_PARTS="qdrant n8n portainer"
+OPTIONAL_PARTS="qdrant portainer"
 # Ollama models aren't backed up: they're large and can always be pulled again.
-BACKUP_VOLUMES="open-webui n8n qdrant portainer"
+BACKUP_VOLUMES="open-webui qdrant portainer"
 ASSUME_YES=0
 
 say()  { printf '%s\n' "$*"; }
@@ -116,16 +116,6 @@ recommend_model() {
   fi
 }
 
-detect_timezone() {
-  local tz=""
-  if [ -L /etc/localtime ]; then
-    tz=$(readlink /etc/localtime | sed 's#.*/zoneinfo/##')
-  elif [ -f /etc/timezone ]; then
-    tz=$(cat /etc/timezone)
-  fi
-  case $tz in */*) echo "$tz" ;; esac
-}
-
 random_hex() {
   if command -v openssl >/dev/null 2>&1; then
     openssl rand -hex 32
@@ -136,16 +126,12 @@ random_hex() {
 
 print_urls() {
   say "  Chat (Open WebUI)    http://localhost:3000"
-  if has_profile n8n; then say "  Automations (n8n)    http://localhost:5678"; fi
   if has_profile qdrant; then say "  Qdrant dashboard     http://localhost:6333/dashboard"; fi
   if has_profile portainer; then say "  Portainer            https://localhost:9443"; fi
 }
 
 first_run_notes() {
   case $1 in
-    n8n)
-      say "Open http://localhost:5678 and create the owner account."
-      say "To try the starter workflow, see 'Your first automation' in the README." ;;
     qdrant)
       say "Dashboard: http://localhost:6333/dashboard (collections appear once something writes to it)." ;;
     portainer)
@@ -190,11 +176,6 @@ cmd_setup() {
   fi
 
   [ -n "$(env_get WEBUI_SECRET_KEY)" ] || env_set WEBUI_SECRET_KEY "$(random_hex)"
-  [ -n "$(env_get N8N_ENCRYPTION_KEY)" ] || env_set N8N_ENCRYPTION_KEY "$(random_hex)"
-
-  local tz
-  tz=$(detect_timezone)
-  if [ -n "$tz" ]; then env_set TIMEZONE "$tz"; fi
 
   local files="docker-compose.yml" where="Docker, CPU only" docker_ollama=1
   case $(uname -s) in
@@ -233,7 +214,6 @@ cmd_setup() {
   say ""
   say "Setup done."
   say "  Ollama runs in:  $where"
-  say "  Timezone:        $(env_get TIMEZONE)"
   say "  Optional parts:  ${keep:-none yet (add them later with ./lab.sh add)}"
   say ""
   say "Next:"
@@ -290,7 +270,7 @@ cmd_add() {
   local part=${1:-}
   case " $OPTIONAL_PARTS " in
     *" $part "*) ;;
-    *) die "Usage: ./lab.sh add qdrant|n8n|portainer" ;;
+    *) die "Usage: ./lab.sh add qdrant|portainer" ;;
   esac
   set_profiles "$(profiles) $part"
   dc up -d --wait --wait-timeout 300 "$part"
@@ -304,7 +284,7 @@ cmd_remove() {
   local part=${1:-} keep="" p
   case " $OPTIONAL_PARTS " in
     *" $part "*) ;;
-    *) die "Usage: ./lab.sh remove qdrant|n8n|portainer" ;;
+    *) die "Usage: ./lab.sh remove qdrant|portainer" ;;
   esac
   dc rm --stop --force "$part"
   for p in $(profiles); do [ "$p" = "$part" ] || keep="$keep $p"; done
@@ -361,7 +341,7 @@ cmd_restore() {
   src=$(cd "$src" && pwd)
   need_docker
 
-  say "This replaces the lab's current chats, workflows, settings and keys with the copy in:"
+  say "This replaces the lab's current chats, settings and keys with the copy in:"
   say "  $src"
   ask "Continue?" n || die "Cancelled. Nothing was changed."
 
@@ -410,11 +390,11 @@ Home AI lab
   ./lab.sh pull <model>       Download a model, e.g. ./lab.sh pull qwen3.5:4b
   ./lab.sh models             List downloaded models
 
-  ./lab.sh add <part>         Turn on qdrant, n8n or portainer
+  ./lab.sh add <part>         Turn on qdrant or portainer
   ./lab.sh remove <part>      Turn one off again (its data is kept)
 
   ./lab.sh logs [part]        Follow the logs (Ctrl+C to stop watching)
-  ./lab.sh backup             Save chats, workflows, settings and .env to backups/
+  ./lab.sh backup             Save chats, settings and .env to backups/
   ./lab.sh restore <folder>   Put a backup back
   ./lab.sh update             Back up, then pull and restart on the pinned versions
 
